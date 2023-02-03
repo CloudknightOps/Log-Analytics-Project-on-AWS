@@ -1,10 +1,5 @@
 plugin: aws_ec2
 
-vars:
-  aws_access_key: AIDAT46ERSE6NIXYYVQ4D
-  aws_secret_key: yA/hanZrevdUak9EjzIytU31D5T9sd5dhVo8X1Go
-  aws_profile: VSCODE
-
 regions:
   - us-east-1
 
