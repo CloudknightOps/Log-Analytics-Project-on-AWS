@@ -1,0 +1,1 @@
+python3  apache-fake-log-gen.py -n 100 -o GZ -s 10 
