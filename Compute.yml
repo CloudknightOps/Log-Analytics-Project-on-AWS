@@ -1,4 +1,15 @@
-AWSTemplateFormatVersion: '2010-09-09'
+---
+Description: >
+       Deploys the necessary compute infrastructure and dependencies to host a Log-Analytics solution on AWS.
+       The template creates an IAM role for the EC2 instances, a security group, 
+       and three EC2 instances provisioned across two subnets and two availability zones for fault tolerance. 
+       The security group allows incoming traffic on ports 22 (SSH), 80 (HTTP), and 443 (HTTPS) 
+
+Parameters:
+  EnvironmentName:
+    Description: A name that will be prefixed to resource names for easy identification
+    Type: String
+
 Resources:
   EC2InstanceRole:
     Type: AWS::IAM::Role
@@ -6,12 +17,10 @@ Resources:
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
-        - Action:
-          - 'sts:AssumeRole'
-        Effect: Allow
-        Principal:
-          Service:
-          - ec2.amazonaws.com
+        - Action: 'sts:AssumeRole'
+          Effect: Allow
+          Principal:
+            Service: 'ec2.amazonaws.com'
       Policies:
       - PolicyName: kinesis
         PolicyDocument:
@@ -25,7 +34,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Allow SSH, HTTP, and HTTPS access
-      VpcId: !ImportValue VPCStackName-VPC
+      VpcId: !ImportValue "${EnvironmentName}-VPCID"
       SecurityGroupIngress:
       - IpProtocol: tcp
         FromPort: 22
@@ -45,7 +54,7 @@ Resources:
     Properties:
       InstanceType: t2.small
       ImageId: ami-0aa7d40eeae50c9a9
-      KeyName: mykey
+      KeyName: ~/Desktop/Container.pem
       BlockDeviceMappings:
       - DeviceName: /dev/xvda
         Ebs:
@@ -54,15 +63,15 @@ Resources:
       NetworkInterfaces:
       - AssociatePublicIpAddress: true
         DeviceIndex: 0
-        GroupSet: [!Ref SecurityGroup]
-        SubnetId: !ImportValue VPCStackName-PublicSubnet1
+        GroupSet: [!Ref SecurityGroup] 
+        SubnetId: !ImportValue "${EnvironmentName}-PUB1-SN"
 
   EC2Instance2:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: t2.small
       ImageId: ami-0aa7d40eeae50c9a9
-      KeyName: mykey
+      KeyName: ~/Desktop/Container.pem
       BlockDeviceMappings:
       - DeviceName: /dev/xvda
         Ebs:
@@ -72,14 +81,14 @@ Resources:
       - AssociatePublicIpAddress: true
         DeviceIndex: 0
         GroupSet: [!Ref SecurityGroup]
-        SubnetId: !ImportValue VPCStackName-PublicSubnet2
+        SubnetId: !ImportValue "${EnvironmentName}-PUB2-SN"
 
   EC2Instance3:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: t2.small
       ImageId: ami-0aa7d40eeae50c9a9
-      KeyName: mykey
+      KeyName: ~/Desktop/Container.pem
       BlockDeviceMappings:
       - DeviceName: /dev/xvda
         Ebs:
@@ -89,4 +98,5 @@ Resources:
       - AssociatePublicIpAddress: true
         DeviceIndex: 0
         GroupSet: [!Ref SecurityGroup]
-        SubnetId: !ImportValue VPCStackName-PublicSubnet2
+        SubnetId: 
+        - Fn::ImportValue: !Sub "${EnvironmentName}-PUB2-SN"
