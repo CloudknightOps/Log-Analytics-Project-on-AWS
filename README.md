@@ -1,2 +1,2 @@
 # Log-Analytics-Project-on-AWS
-![](jules.jpeg)
+![Log-Analytics-Project-on-AWS](Architectural Diagram for remote logging system .png)
