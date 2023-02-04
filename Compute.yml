@@ -1,63 +1,92 @@
----
 AWSTemplateFormatVersion: '2010-09-09'
 Resources:
-  VPC:
-    Type: AWS::EC2::VPC
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
     Properties:
-      CidrBlock: 10.0.0.0/16
-      EnableDnsSupport: true
-      EnableDnsHostnames: true
-
-  PublicSubnet1:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      CidrBlock: 10.0.1.0/24
-      MapPublicIpOnLaunch: true
-      AvailabilityZone: us-west-2a
-
-  PublicSubnet2:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      CidrBlock: 10.0.2.0/24
-      MapPublicIpOnLaunch: true
-      AvailabilityZone: us-west-2b
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Action:
+          - 'sts:AssumeRole'
+        Effect: Allow
+        Principal:
+          Service:
+          - ec2.amazonaws.com
+      Policies:
+      - PolicyName: kinesis
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Action: 'kinesis:*'
+            Effect: Allow
+            Resource: '*'
 
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Allow SSH and HTTP traffic
-      VpcId: !Ref VPC
+      GroupDescription: Allow SSH, HTTP, and HTTPS access
+      VpcId: !ImportValue VPCStackName-VPC
       SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 443
+        ToPort: 443
+        CidrIp: 0.0.0.0/0
 
-  EC2Instance:
+  EC2Instance1:
     Type: AWS::EC2::Instance
     Properties:
-      InstanceType: t2.micro
-      ImageId: ami-0c55b159cbfafe1f0
+      InstanceType: t2.small
+      ImageId: ami-0aa7d40eeae50c9a9
       KeyName: mykey
+      BlockDeviceMappings:
+      - DeviceName: /dev/xvda
+        Ebs:
+          VolumeSize: 30
+          VolumeType: gp2
       NetworkInterfaces:
-        - AssociatePublicIpAddress: true
-          DeviceIndex: 0
-          GroupSet:
-            - !Ref SecurityGroup
-          SubnetId: !Ref PublicSubnet1
-      UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash
-          yum update -y
-          yum install httpd -y
-          yum install openssh-server -y
-          amazon-linux-extras install python3 -y
-          service httpd start
-          systemctl enable httpd.service
-      Count: 3
+      - AssociatePublicIpAddress: true
+        DeviceIndex: 0
+        GroupSet: [!Ref SecurityGroup]
+        SubnetId: !ImportValue VPCStackName-PublicSubnet1
+
+  EC2Instance2:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.small
+      ImageId: ami-0aa7d40eeae50c9a9
+      KeyName: mykey
+      BlockDeviceMappings:
+      - DeviceName: /dev/xvda
+        Ebs:
+          VolumeSize: 30
+          VolumeType: gp2
+      NetworkInterfaces:
+      - AssociatePublicIpAddress: true
+        DeviceIndex: 0
+        GroupSet: [!Ref SecurityGroup]
+        SubnetId: !ImportValue VPCStackName-PublicSubnet2
+
+  EC2Instance3:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.small
+      ImageId: ami-0aa7d40eeae50c9a9
+      KeyName: mykey
+      BlockDeviceMappings:
+      - DeviceName: /dev/xvda
+        Ebs:
+          VolumeSize: 30
+          VolumeType: gp2
+      NetworkInterfaces:
+      - AssociatePublicIpAddress: true
+        DeviceIndex: 0
+        GroupSet: [!Ref SecurityGroup]
+        SubnetId: !ImportValue VPCStackName-PublicSubnet2
