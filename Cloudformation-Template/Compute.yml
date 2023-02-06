@@ -11,24 +11,54 @@ Parameters:
     Type: String
 
 Resources:
-  EC2InstanceRole:
+  IAMRole:
     Type: AWS::IAM::Role
     Properties:
+      RoleName: web-server-log-ec2
       AssumeRolePolicyDocument:
-        Version: '2012-10-17'
+        Version: 2012-10-17
         Statement:
-        - Action: 'sts:AssumeRole'
-          Effect: Allow
+        - Effect: Allow
           Principal:
-            Service: 'ec2.amazonaws.com'
+            Service:
+            - ec2.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: /
       Policies:
-      - PolicyName: kinesis
+      - PolicyName: kinesisfirehosefullaccess
         PolicyDocument:
-          Version: '2012-10-17'
+          Version: 2012-10-17
           Statement:
-          - Action: 'kinesis:*'
+          - Action:
+            - firehose:*
             Effect: Allow
-            Resource: '*'
+            Resource: "*"
+      - PolicyName: cloudwatchfullaccess
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+          - Action:
+            - autoscaling:Describe*
+            - cloudwatch:*
+            - logs:*
+            - sns:*
+            - iam:GetPolicy
+            - iam:GetPolicyVersion
+            - iam:GetRole
+            - oam:ListSinks
+            Effect: Allow
+            Resource: "*"
+          - Action: iam:CreateServiceLinkedRole
+            Effect: Allow
+            Resource: "arn:aws:iam::*:role/aws-service-role/events.amazonaws.com/AWSServiceRoleForCloudWatchEvents*"
+            Condition:
+              StringLike:
+                iam:AWSServiceName: events.amazonaws.com
+          - Action:
+            - oam:ListAttachedLinks
+            Effect: Allow
+            Resource: "arn:aws:oam:*:*:sink/*"
 
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -60,6 +90,7 @@ Resources:
         Ebs:
           VolumeSize: 30
           VolumeType: gp2
+      IamInstanceProfile: !Ref IAMRole
       NetworkInterfaces:
       - AssociatePublicIpAddress: true
         DeviceIndex: 0
@@ -77,6 +108,7 @@ Resources:
         Ebs:
           VolumeSize: 30
           VolumeType: gp2
+      IamInstanceProfile: !Ref IAMRole
       NetworkInterfaces:
       - AssociatePublicIpAddress: true
         DeviceIndex: 0
@@ -94,6 +126,7 @@ Resources:
         Ebs:
           VolumeSize: 30
           VolumeType: gp2
+      IamInstanceProfile: !Ref IAMRole
       NetworkInterfaces:
       - AssociatePublicIpAddress: true
         DeviceIndex: 0
