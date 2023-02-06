@@ -1,0 +1,9 @@
+argparse==1.4.0
+datetime==4.3
+faker==4.0.2
+numpy==1.19.4
+random==0.0
+gzip==0.0
+zipfile==0.0
+sys==0.0
+tzlocal==2.1
