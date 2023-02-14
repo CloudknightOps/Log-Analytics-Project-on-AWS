@@ -1,2 +1,2 @@
 # Log-Analytics-Project-on-AWS
-![Log](log-analytics.png)
+![Log](log-analytics-solution.png)
