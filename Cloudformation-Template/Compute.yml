@@ -1,8 +1,7 @@
----
 Description: >
        Deploys the necessary compute infrastructure and dependencies to host a Log-Analytics solution on AWS.
-       The template creates an IAM role for the EC2 instances, a security group, 
-       and three EC2 instances provisioned across two subnets and two availability zones for fault tolerance. 
+       The template creates an IAM role for the EC2 Instance, a security group, 
+       and an autoscaling group with a launch template provisioned across two subnets and two availability zones for fault tolerance. 
        The security group allows incoming traffic on ports 22 (SSH), 80 (HTTP), and 443 (HTTPS) 
 
 Parameters:
@@ -10,13 +9,25 @@ Parameters:
     Description: A name that will be prefixed to resource names for easy identification
     Type: String
 
+ 
 Resources:
-  IAMRole:
+  
+  WebProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: "/"
+      Roles:
+      - Ref: WebRole
+  WebRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: web-server-log-ec2
+      RoleName: web-log-ec2-role
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AmazonKinesisFirehoseFullAccess"
+        - "arn:aws:iam::aws:policy/CloudWatchFullAccess"
+        - "arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforSSM"
       AssumeRolePolicyDocument:
-        Version: 2012-10-17
+        Version: '2012-10-17'
         Statement:
         - Effect: Allow
           Principal:
@@ -24,48 +35,14 @@ Resources:
             - ec2.amazonaws.com
           Action:
           - sts:AssumeRole
-      Path: /
-      Policies:
-      - PolicyName: kinesisfirehosefullaccess
-        PolicyDocument:
-          Version: 2012-10-17
-          Statement:
-          - Action:
-            - firehose:*
-            Effect: Allow
-            Resource: "*"
-      - PolicyName: cloudwatchfullaccess
-        PolicyDocument:
-          Version: 2012-10-17
-          Statement:
-          - Action:
-            - autoscaling:Describe*
-            - cloudwatch:*
-            - logs:*
-            - sns:*
-            - iam:GetPolicy
-            - iam:GetPolicyVersion
-            - iam:GetRole
-            - oam:ListSinks
-            Effect: Allow
-            Resource: "*"
-          - Action: iam:CreateServiceLinkedRole
-            Effect: Allow
-            Resource: "arn:aws:iam::*:role/aws-service-role/events.amazonaws.com/AWSServiceRoleForCloudWatchEvents*"
-            Condition:
-              StringLike:
-                iam:AWSServiceName: events.amazonaws.com
-          - Action:
-            - oam:ListAttachedLinks
-            Effect: Allow
-            Resource: "arn:aws:oam:*:*:sink/*"
-
+      Path: "/"
+  
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Allow SSH, HTTP, and HTTPS access
       VpcId: 
-      !ImportValue "${EnvironmentName}-VPCID"
+       !ImportValue "${EnvironmentName}-VPCID"
       SecurityGroupIngress:
       - IpProtocol: tcp
         FromPort: 22
@@ -80,59 +57,106 @@ Resources:
         ToPort: 443
         CidrIp: 0.0.0.0/0
 
-  EC2Instance1:
-    Type: AWS::EC2::Instance
+  LatestAmiId:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
     Properties:
-      InstanceType: t2.small
-      ImageId: ami-0aa7d40eeae50c9a9
-      KeyName: ~/Desktop/Container.pem
-      BlockDeviceMappings:
-      - DeviceName: /dev/xvda
-        Ebs:
-          VolumeSize: 30
-          VolumeType: gp2
-      IamInstanceProfile: !Ref IAMRole
-      NetworkInterfaces:
-      - AssociatePublicIpAddress: true
-        DeviceIndex: 0
-        GroupSet: [!Ref SecurityGroup] 
-        SubnetId: 
+      LaunchTemplateName: "web-log-launch-template"
+      LaunchTemplateData:
+        InstanceType: t2.micro
+        ImageId: !Ref LatestAmiId
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+        UserData:
+          Fn::Base64:
+            !Sub |
+              #!/bin/bash
+              sudo apt-get update -y
+              sudo apt-get install apache2 -y
+              sudo systemctl start apache2.service
+              cd /var/www/html
+              echo "It Works! Our Servers are UP " >index.html   
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Key: "Name"
+                Value: "LogAnalyticsInstance"
+              - Key: "Environment"
+                Value: !Ref EnvironmentName
+  AutoScalingGroup:
+    Type: "AWS::AutoScaling::AutoScalingGroup"
+    Properties:
+      AutoScalingGroupName: "LogAnalyticsASG"
+      LaunchTemplate:
+        LaunchTemplateName: !Ref LaunchTemplate
+        Version: !GetAtt LaunchTemplate.LatestVersionNumber
+      VPCZoneIdentifier:
         - Fn::ImportValue: !Sub "${EnvironmentName}-PUB1-SN"
-
-  EC2Instance2:
-    Type: AWS::EC2::Instance
-    Properties:
-      InstanceType: t2.small
-      ImageId: ami-0aa7d40eeae50c9a9
-      KeyName: ~/Desktop/Container.pem
-      BlockDeviceMappings:
-      - DeviceName: /dev/xvda
-        Ebs:
-          VolumeSize: 30
-          VolumeType: gp2
-      IamInstanceProfile: !Ref IAMRole
-      NetworkInterfaces:
-      - AssociatePublicIpAddress: true
-        DeviceIndex: 0
-        GroupSet: [!Ref SecurityGroup]
-        SubnetId: 
         - Fn::ImportValue: !Sub "${EnvironmentName}-PUB2-SN"
+      MaxSize: "7"
+      MinSize: "3"
+      DesiredCapacity: "3"
+      TargetGroupARNs:
+        - Ref: TargetGroup
+      HealthCheckGracePeriod: 300
+      Tags:
+        - Key: "Name"
+          Value: "LogAnalyticsASG"
+          PropagateAtLaunch: true
 
-  EC2Instance3:
-    Type: AWS::EC2::Instance
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      InstanceType: t2.small
-      ImageId: ami-0aa7d40eeae50c9a9
-      KeyName: ~/Desktop/Container.pem
-      BlockDeviceMappings:
-      - DeviceName: /dev/xvda
-        Ebs:
-          VolumeSize: 30
-          VolumeType: gp2
-      IamInstanceProfile: !Ref IAMRole
-      NetworkInterfaces:
-      - AssociatePublicIpAddress: true
-        DeviceIndex: 0
-        GroupSet: [!Ref SecurityGroup]
-        SubnetId: 
+      Name: "LogAnalyticsTargetGroup"
+      Port: 80
+      Protocol: HTTP
+      VpcId: 
+       Fn::ImportValue:
+          !Sub "${EnvironmentName}-VPCID"
+      TargetType: instance
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: "/"
+      HealthCheckPort: "80"
+      HealthCheckProtocol: "HTTP"
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 5
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: "LogAnalyticsLoadBalancer"
+      Scheme: internet-facing
+      Subnets: 
+        - Fn::ImportValue: !Sub "${EnvironmentName}-PUB1-SN"
         - Fn::ImportValue: !Sub "${EnvironmentName}-PUB2-SN"
+      SecurityGroups:
+        - !Ref SecurityGroup
+      Type: application
+      IpAddressType: ipv4
+
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn:
+          Ref: WebAppTargetGroup
+      LoadBalancerArn:
+        Ref: LoadBalancer
+      Port: '80'
+      Protocol: HTTP
+  ALBListenerRule:
+      Type: AWS::ElasticLoadBalancingV2::ListenerRule
+      Properties:
+        Actions:
+        - Type: forward
+          TargetGroupArn: !Ref 'TargetGroup'
+        Conditions:
+        - Field: path-pattern
+          Values: [/]
+        ListenerArn: !Ref 'Listener'
+        Priority: 1
