@@ -1,0 +1,85 @@
+---
+- name: Configure EC2 instances
+  hosts: 
+  become: true
+  tasks:
+    - name: update packages
+      yum:
+        name: "*"
+        state: latest
+
+    - name: Update packages and install Git
+      yum:
+        name: git
+        state: present
+
+    - name: Install pip
+      package: 
+        name: python3-pip
+        state: present
+
+    - name: Install Python packages
+      pip:
+        name:
+          - pytz
+          - numpy
+          - faker
+      
+    - name: Clone GitHub repository
+      git:
+        repo: https://github.com/CloudknightOps/Log-Analytics-Project-on-AWS.git
+        dest: ~/Log-Analytics-Project-on-AWS
+
+    - name: Change working directory to  inside cloned repo
+      become: true
+      become_user: ec2-user
+      shell: cd ~/Log-Analytics-Project-on-AWS/Fake-log-generator/
+
+    - name: Create log directory
+      file:
+        path: /tmp/logs
+        state: directory
+
+    - name: Copy Python script to log directory
+      copy:
+        src: ~/Log-Analytics-Project-on-AWS/Fake-log-generator/apache-fake-log-gen.py
+        dest: /tmp/logs
+    
+    - name: Change working Directory to Log directory
+      become: true
+      become_user: ec2-user
+      shell: cd /tmp/logs
+
+    - name: Run the python command to generate fake apache common logs
+      command: python3 /tmp/logs/apache-fake-log-gen.py -n 0 -o LOG &
+    
+    - name: Change working Directory to Home directory
+      become: true
+      become_user: ec2-user
+      shell: cd ~/
+      
+    - name: Install the Amazon Kinesis Firehose agent
+      yum:
+        name: aws-kinesis-agent
+        state: latest
+    
+    - name: Configure the Amazon Kinesis Firehose agent
+      become_user: root
+      replace:
+        path: /etc/aws-kinesis/agent.json
+        regexp: '^{.*}$'
+        replace: |
+          {
+            "cloudwatch.emitMetrics": true,
+            "kinesis.endpoint": "",
+            "firehose.endpoint": "",
+            "flows": [{
+              "filePattern": "/tmp/logs/access_log*",
+              "deliveryStream": "Access-log-ingestion-stream",
+              "dataProcessingOptions": [{
+                "optionName": "LOGTOJSON",
+                "logFormat": "COMMONAPACHELOG"
+              }]
+            }]
+          }
+
