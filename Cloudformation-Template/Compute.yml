@@ -21,7 +21,7 @@ Resources:
   WebRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: web-log-ec2-role
+      Name: web-log-ec2-role
       ManagedPolicyArns:
         - "arn:aws:iam::aws:policy/AmazonKinesisFirehoseFullAccess"
         - "arn:aws:iam::aws:policy/CloudWatchFullAccess"
@@ -37,7 +37,7 @@ Resources:
           - sts:AssumeRole
       Path: "/"
   
-  SecurityGroup:
+  LogAnalyticsSeCGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Allow SSH, HTTP, and HTTPS access
@@ -57,9 +57,6 @@ Resources:
         ToPort: 443
         CidrIp: 0.0.0.0/0
 
-  LatestAmiId:
-    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
-    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
 
   LaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
@@ -67,9 +64,9 @@ Resources:
       LaunchTemplateName: "web-log-launch-template"
       LaunchTemplateData:
         InstanceType: t2.micro
-        ImageId: !Ref LatestAmiId
+        ImageId: ami-005f9685cb30f234b
         SecurityGroupIds:
-          - !Ref SecurityGroup
+          - !Ref LogAnalyticsSeCGroup
         UserData:
           Fn::Base64:
             !Sub |
@@ -105,7 +102,22 @@ Resources:
       Tags:
         - Key: "Name"
           Value: "LogAnalyticsASG"
-          PropagateAtLaunch: true
+          PropagateAtLaunch: true 
+      
+  MyScaleOutPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: MyAutoScalingGroup
+      PolicyType: TargetTrackingScaling
+      TargetTrackingConfiguration:
+        TargetValue: 90.0
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ASGAverageCPUUtilization
+      Notifications:
+        - TopicARN: arn:aws:sns:us-east-1:0123456789:my-topic
+          NotificationTypes:
+            - "autoscaling:EC2_INSTANCE_LAUNCH"
+
 
   TargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
@@ -115,7 +127,7 @@ Resources:
       Protocol: HTTP
       VpcId: 
        Fn::ImportValue:
-          !Sub "${EnvironmentName}-VPCID"
+         !Sub "${EnvironmentName}-VPCID"
       TargetType: instance
       HealthCheckIntervalSeconds: 30
       HealthCheckPath: "/"
@@ -134,7 +146,7 @@ Resources:
         - Fn::ImportValue: !Sub "${EnvironmentName}-PUB1-SN"
         - Fn::ImportValue: !Sub "${EnvironmentName}-PUB2-SN"
       SecurityGroups:
-        - !Ref SecurityGroup
+        - !Ref LogAnalyticsSeCGroup
       Type: application
       IpAddressType: ipv4
 
@@ -144,11 +156,12 @@ Resources:
       DefaultActions:
       - Type: forward
         TargetGroupArn:
-          Ref: WebAppTargetGroup
+          Ref: TargetGroup
       LoadBalancerArn:
         Ref: LoadBalancer
       Port: '80'
       Protocol: HTTP
+      
   ALBListenerRule:
       Type: AWS::ElasticLoadBalancingV2::ListenerRule
       Properties:
@@ -160,3 +173,4 @@ Resources:
           Values: [/]
         ListenerArn: !Ref 'Listener'
         Priority: 1
+
