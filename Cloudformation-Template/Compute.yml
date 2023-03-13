@@ -61,7 +61,7 @@ Resources:
   LaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
     Properties:
-      LaunchTemplateName: "web-log-launch-template"
+      LaunchTemplateName: "apache-webserver-template"
       LaunchTemplateData:
         InstanceType: t2.micro
         ImageId: ami-005f9685cb30f234b
@@ -71,9 +71,10 @@ Resources:
           Fn::Base64:
             !Sub |
               #!/bin/bash
-              sudo apt-get update -y
-              sudo apt-get install apache2 -y
-              sudo systemctl start apache2.service
+              sudo yum update -y 
+              sudo yum install -y httpd
+              sudo systemctl start httpd.service
+              sudo systemctl enable httpd.service
               cd /var/www/html
               echo "It Works! Our Servers are UP " >index.html   
         TagSpecifications:
@@ -114,9 +115,9 @@ Resources:
         PredefinedMetricSpecification:
           PredefinedMetricType: ASGAverageCPUUtilization
       Notifications:
-        - TopicARN: arn:aws:sns:us-east-1:0123456789:my-topic
+        - TopicARN: arn:aws:sns:us-east-1:0123456789:Instance-down
           NotificationTypes:
-            - "autoscaling:EC2_INSTANCE_LAUNCH"
+            - "autoscaling:EC2_INSTANCE_TERMINATE"
 
 
   TargetGroup:
